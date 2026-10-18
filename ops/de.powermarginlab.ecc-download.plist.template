@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Daily local download of ECC public SPAN files. Install with scripts/install_launchd.sh. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>de.powermarginlab.ecc-download</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__UV__</string><string>run</string><string>--project</string><string>__REPO__</string>
+    <string>python</string><string>-m</string><string>power_margin_lab.ingest.ecc_files</string>
+    <string>--dest</string><string>__REPO__/data/raw/ecc</string>
+    <string>--date</string><string>all</string><string>--with-spanfile</string>
+  </array>
+  <key>WorkingDirectory</key><string>__REPO__</string>
+  <!-- ECC publishes around 20:00-21:00 CET; 22:15 Mon-Fri. Missed runs (Mac asleep) run on wake. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>15</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>__REPO__/data/logs/ecc_download.log</string>
+  <key>StandardErrorPath</key><string>__REPO__/data/logs/ecc_download.log</string>
+</dict>
+</plist>

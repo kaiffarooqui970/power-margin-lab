@@ -1,0 +1,15 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+      - run: uv sync
+      - run: uv run ruff check .
+      # unit tests + end-to-end smoke test of the whole pipeline on synthetic fixtures;
+      # CI never downloads or stores real ECC/EEX/SMARD data.
+      - run: uv run pytest -q
