@@ -40,3 +40,8 @@
 - German and English READMEs with status banner, METHODOLOGY, LIMITATIONS, DECISIONS (D-001 to D-053), MIT licence.
 - CI (ruff + pytest including the end-to-end smoke test on synthetic fixtures); macOS LaunchAgent for the daily ECC download.
 - Open: real EEX history (stub ready); a longer REAL history from the daily job; a multi-factor proxy or real data to remove the correlation-1 bias.
+
+**Pre-publish review (2026-10-18)**
+- Proxy volatility explained: the 30-day trailing mean smooths spot volatility heavily, so the proxy's volatility level is set by the window. Documented in METHODOLOGY, LIMITATIONS, DECISIONS D-011 and report §2, with a generated table for windows of 1, 7 and 30 days.
+- Report: 95 % intervals (chi-square, Fisher-z) and bootstrap ranges for the short REAL estimates; the anti-procyclicality trade-off table (breaches, mean uplift, SP-binding share, peak/trough, 5-day jumps); finding 1 reworded as conservative by design.
+- Licence audit of public files; GitHub user and citation/contact section added.

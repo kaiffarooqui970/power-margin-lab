@@ -6,11 +6,13 @@ import math
 
 import numpy as np
 import pandas as pd
+from scipy.stats import chi2
 
 from .. import warehouse as wh
 from ..config import Paths, load_portfolios
 from ..margin import fhs
 from ..model.portfolios import portfolios_from_config
+from ..model.products import business_days
 from ..validation import backtest as bt
 from ..validation import procyclicality as pc
 from .margin_run import all_books, make_panel
@@ -201,6 +203,65 @@ def run(paths: Paths, cfg: dict) -> dict:
         "real_m1_daily_vol_last21": float(m1_real.std()),
         "proxy_m1_ewma_sigma_asof": float(fhs.ewma_sigma(panel.r[:, [0]], cfg["fhs"][
             "ewma_lambda"], cfg["fhs"]["ewma_seed_obs"])[-1, 0])}]))
+
+    # --- how much does the trailing mean smooth spot volatility? -------------------------
+    dly = wh.read(con, "int_smard_daily_base")
+    base = dly.set_index(pd.to_datetime(dly["delivery_day"]))["base_price"].sort_index()
+    bd = pd.to_datetime(business_days(base.index[60].date(), max(panel.dates)))
+    sm = []
+    for w in (1, 7, cfg["proxy"]["smoothing_days"]):
+        x = base.rolling(w).mean().reindex(bd)
+        r = (x / x.shift(1) - 1).dropna()
+        sm.append({"window_days": w, "daily_vol_full": float(r.std()),
+                   "daily_vol_last21": float(r.iloc[-21:].std()),
+                   "lag1_autocorr": float(r.autocorr(1)), "price_source": "PROXY"})
+    wh.write(con, "fct_proxy_smoothing", pd.DataFrame(sm))
+
+    # --- uncertainty of the short REAL estimates ------------------------------------------
+    rng = np.random.default_rng(cfg["backtest"].get("bootstrap_seed", 7))
+    n_boot = cfg["backtest"].get("bootstrap_n", 5000)
+    unc = []
+    for tenor in tenors:
+        r = piv[tenor].dropna().to_numpy()
+        n, sd = len(r), float(np.std(r, ddof=1))
+        lo = sd * math.sqrt((n - 1) / chi2.ppf(0.975, n - 1))
+        hi = sd * math.sqrt((n - 1) / chi2.ppf(0.025, n - 1))
+        boot = np.std(rng.choice(r, (n_boot, n)), axis=1, ddof=1)
+        unc.append({"quantity": f"daily vol {tenor}", "n": n, "estimate": sd,
+                    "ci_low": lo, "ci_high": hi, "boot_low": float(np.quantile(boot, 0.025)),
+                    "boot_high": float(np.quantile(boot, 0.975)), "price_source": "REAL"})
+    j = piv[["Y1", "Y2"]].dropna().to_numpy()
+    idx = rng.integers(0, len(j), (n_boot, len(j)))
+    bc = np.array([np.corrcoef(j[i, 0], j[i, 1])[0, 1] for i in idx])
+    rho = float(np.corrcoef(j[:, 0], j[:, 1])[0, 1])
+    flo, fhi = fisher_ci(rho, len(j))
+    unc.append({"quantity": "corr Y1/Y2", "n": len(j), "estimate": rho, "ci_low": flo,
+                "ci_high": fhi, "boot_low": float(np.nanquantile(bc, 0.025)),
+                "boot_high": float(np.nanquantile(bc, 0.975)), "price_source": "REAL"})
+    wh.write(con, "fct_real_estimate_uncertainty", pd.DataFrame(unc))
+
+    # --- anti-procyclicality trade-off: max(FHS, SP) vs. plain FHS ------------------------
+    trade = []
+    for p in portfolios:
+        f = daily[(daily["model"] == "FHS") & (daily["portfolio_id"] == p.portfolio_id)]
+        m = daily[(daily["model"] == "MRIM") & (daily["portfolio_id"] == p.portfolio_id)]
+        j2 = f.merge(m, on="as_of_date", suffixes=("_fhs", "_mrim"))
+        b = hist[(hist["model"] == "MRIM") & (hist["portfolio_id"] == p.portfolio_id)
+                 & hist["as_of_date"].isin(set(j2["as_of_date"]))]
+        prow = {r.model: r for r in pd.DataFrame(pro).query(
+            "portfolio_id == @p.portfolio_id").itertuples()}
+        trade.append({
+            "portfolio_id": p.portfolio_id, "n": len(j2),
+            "breaches_fhs": int(j2["breach_fhs"].sum()),
+            "breaches_mrim": int(j2["breach_mrim"].sum()), "expected": len(j2) * p_exp,
+            "mean_uplift": float((j2["im_mrim"] / j2["im_fhs"] - 1).mean()),
+            "median_uplift": float((j2["im_mrim"] / j2["im_fhs"] - 1).median()),
+            "sp_binding_share": float((b["binding"] == "SP").mean()),
+            "peak_to_trough_fhs": prow["FHS"].peak_to_trough,
+            "peak_to_trough_mrim": prow["MRIM"].peak_to_trough,
+            "max_5d_increase_fhs": prow["FHS"].max_5d_increase,
+            "max_5d_increase_mrim": prow["MRIM"].max_5d_increase, "price_source": "PROXY"})
+    wh.write(con, "fct_apc_tradeoff", pd.DataFrame(trade))
 
     out = {"backtest_obs": int(daily.groupby(["model", "portfolio_id"]).size().max()),
            "breaches_total": int(daily["breach"].sum())}

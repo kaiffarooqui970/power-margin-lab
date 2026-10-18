@@ -7,7 +7,7 @@ power futures (month, quarter, year):
 
 - a **simplified SPAN** following ECC's published methodology, and
 - a **Prisma-inspired FHS model** (filtered historical simulation), with backtesting,
-  procyclicality analysis and a clean data model.
+  procyclicality analysis and a documented data model.
 
 [Deutsche Version](README.md)
 
@@ -53,7 +53,7 @@ Requires [uv](https://docs.astral.sh/uv/). There is **no manual export step**: E
 may not be exported, so data comes from ECC's public files and SMARD.
 
 ```sh
-git clone https://github.com/<user>/power-margin-lab && cd power-margin-lab
+git clone https://github.com/kaiffarooqui970/power-margin-lab && cd power-margin-lab
 make setup        # Python 3.11 + dependencies
 make all          # download (ECC ~20 MB/day + 55 MB spreads, SMARD) -> ingest -> build -> margin -> backtest -> report
 open reports/margin_comparison.md
@@ -97,10 +97,10 @@ Full text: [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
 <!-- RESULTS:START -->
 *Generated from `reports/` (as of 2026-10-16). Source of each number in brackets.*
 
-- Today: max(FHS, SP) vs. SPAN-current: -28 % to +12 % per portfolio; SP binds in 5/5 (REAL prices, PROXY scenarios).
-- SPAN-hist vs. real ECC scanning ranges (M1, 22 days): mean error -24.8 %, max 27.4 % (PROXY vs. REAL).
-- Backtest 2021-11-01 to 2026-10-14: FHS 12, max(FHS, SP) 3-4 breaches vs. 12.7 expected (PROXY).
-- Y1/Y2 correlation is 0.92 in REAL data vs. 1 in the proxy: with the real correlation the calendar-spread IM would be 1.09x as high (parametric, REAL).
+- Today: max(FHS, SP) vs. SPAN-current: -28 % to +12 % per portfolio; the stress-period component binds in 5/5 (REAL prices, PROXY scenarios).
+- Backtest 2021-11-01 to 2026-10-14: plain FHS 12, max(FHS, SP) 3-4 breaches vs. 12.7 expected. The SP floor is conservative by design: IM on average +37 to +39 % above FHS, in exchange for less variation (PROXY).
+- SPAN-hist vs. real ECC scanning ranges (M1, 22 days): mean error -24.8 %, caused by the smoothing in the proxy (PROXY vs. REAL).
+- Y1/Y2 correlation is 0.92 in REAL data (95 %: 0.82-0.97) vs. 1 in the proxy: with the real correlation the calendar-spread IM would be 1.09x as high (parametric, REAL).
 
 Details: [reports/margin_comparison.md](reports/margin_comparison.md)
 <!-- RESULTS:END -->
@@ -143,6 +143,15 @@ Full list: [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 - **Simplified models.** SPAN-hist is a proxy. SPAN and FHS are simplified: no liquidity,
   concentration or delivery risk as ECC models them.
 - **Not affiliated with ECC.**
+
+## Citation / contact
+
+Kaif Ahmed Farooqui, GitHub [kaiffarooqui970](https://github.com/kaiffarooqui970).
+Suggested citation: *Farooqui, K. A. (2026). power-margin-lab: simplified SPAN vs.
+Prisma-inspired FHS initial margin for German power futures.*
+<https://github.com/kaiffarooqui970/power-margin-lab>
+
+Personal project; not affiliated with ECC, EEX or Deutsche Börse.
 
 ## Licence and data notice
 

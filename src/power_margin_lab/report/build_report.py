@@ -87,6 +87,9 @@ class Data:
         self.chk = wh.read(con, "fct_span_formula_check")
         self.corr = wh.read(con, "fct_correlation_check")
         self.diag = wh.read(con, "fct_proxy_diagnostics").iloc[0]
+        self.smooth = wh.read(con, "fct_proxy_smoothing")
+        self.unc = wh.read(con, "fct_real_estimate_uncertainty")
+        self.trade = wh.read(con, "fct_apc_tradeoff")
         self.quar = wh.read(con, "quarantine")
         self.drift = wh.read(con, "meta_schema_drift")
         self.ports = wh.read(con, "dim_portfolio").set_index("portfolio_id")["name"]
@@ -287,66 +290,103 @@ def fig_span_validation(d: Data, out: Path) -> None:
 
 # --- interpretation (generated from the numbers) ----------------------------------------
 
-def interpretation(d: Data, today: pd.DataFrame) -> tuple[list[str], list[str]]:
-    n_sp = int((today["binding"] == "SP").sum())
-    lo, hi = today["mrim_vs_span"].min(), today["mrim_vs_span"].max()
-    m1 = d.val.set_index("tenor").loc["M1"]
+def _facts(d: Data, today: pd.DataFrame) -> dict:
     bt = d.bt[d.bt["portfolio_id"].isin(MAIN)].set_index(["model", "portfolio_id"])
-    fhs_b = bt.loc["FHS"]["breaches"]
-    mrim_b = bt.loc["MRIM"]["breaches"]
+    chk = d.chk.set_index("tenor")
+    sm = d.smooth.set_index("window_days")
+    unc = d.unc.set_index("quantity")
+    tr = d.trade.set_index("portfolio_id")
     exp = float(bt.loc["FHS"]["expected"].iloc[0])
     mrim_bt = bt.loc["MRIM"]
-    mrim_rej = int(((mrim_bt["kupiec_p"] < 0.05) & (mrim_bt["breaches"] < exp)).sum())
-    chk = d.chk.set_index("tenor")
-    n_in = int(chk["implied_R_in_range"].sum())
-    s_real, s_proxy = chk.loc["M1", "sigma_real_21d"], chk.loc["M1", "sigma_proxy"]
-    pro = d.pro.set_index(["model", "portfolio_id"])["peak_to_trough"]
-    p3 = d.div[(d.div["portfolio_id"] == "P3") & (d.div["run"] == "today")].set_index("model")[
-        "ratio_mean"]
-    c3 = d.corr.set_index("portfolio_id").loc["P3"]
+    return {
+        "n_sp": int((today["binding"] == "SP").sum()),
+        "lo": today["mrim_vs_span"].min(), "hi": today["mrim_vs_span"].max(),
+        "m1": d.val.set_index("tenor").loc["M1"], "exp": exp,
+        "fhs_b": bt.loc["FHS"]["breaches"], "mrim_b": mrim_bt["breaches"],
+        "mrim_rej": int(((mrim_bt["kupiec_p"] < 0.05) & (mrim_bt["breaches"] < exp)).sum()),
+        "n_in": int(chk["implied_R_in_range"].sum()),
+        "s_proxy": chk.loc["M1", "sigma_proxy"],
+        "vm1": unc.loc["daily vol M1"], "rho": unc.loc["corr Y1/Y2"],
+        "spot_raw": sm.loc[1, "daily_vol_full"], "spot_sm": sm.iloc[-1]["daily_vol_full"],
+        "win": int(sm.index[-1]),
+        "up_lo": tr["mean_uplift"].min(), "up_hi": tr["mean_uplift"].max(),
+        "bind_lo": tr["sp_binding_share"].min(), "bind_hi": tr["sp_binding_share"].max(),
+        "p5": tr.loc["P5"],
+        "p3": d.div[(d.div["portfolio_id"] == "P3") & (d.div["run"] == "today")].set_index(
+            "model")["ratio_mean"],
+        "c3": d.corr.set_index("portfolio_id").loc["P3"],
+        "start": _d(bt.loc["FHS"]["start"].iloc[0]), "end": _d(bt.loc["FHS"]["end"].iloc[0]),
+    }
+
+
+def interpretation(d: Data, today: pd.DataFrame) -> tuple[list[str], list[str]]:
+    f = _facts(d, today)
+    m1, vm1, rho, p5 = f["m1"], f["vm1"], f["rho"], f["p5"]
     de = [
-        f"Heute (REAL-Preise) liegt die marktrisikobasierte IM = max(FHS, SP) zwischen "
-        f"{lo:+.0f} % und {hi:+.0f} % gegenüber SPAN mit den echten ECC-Parametern; in {n_sp} "
-        f"von 5 Portfolios bindet die Stressperioden-Komponente.",
-        f"Die SPAN-Formel von ECC, auf den SMARD-Proxy angewendet, unterschätzt die echten "
-        f"Scanning Ranges für M1 im Mittel um {abs(m1['mean_error_pct']):.0f} %. Das passt zur "
-        f"niedrigeren Proxy-Volatilität (M1 täglich {100 * s_proxy:.2f} % statt "
-        f"{100 * s_real:.2f} % real); mit realer Volatilität läge der implizite "
-        f"Risikomultiplikator für {n_in} von 7 Tenoren in ECCs Band [2,66; 3,5].",
-        f"Im Rückvergleich auf Proxy-Historie hat die reine FHS {_rng(fhs_b)} "
-        f"Überschreitungen bei {exp:.1f} erwarteten; max(FHS, SP) hat {_rng(mrim_b)} und ist "
-        f"damit konservativ (Kupiec verwirft in {mrim_rej} von 5 Portfolios wegen zu weniger "
-        f"Überschreitungen).",
-        f"Die SP-Untergrenze dämpft die Prozyklizität: das Verhältnis Höchst- zu Tiefstwert "
-        f"sinkt für P5 von {pro[('FHS', 'P5')]:.1f}x (FHS) auf {pro[('MRIM', 'P5')]:.1f}x.",
-        f"Beim Kalenderspread P3 rechnet FHS heute mit {p3['FHS']:.2f} der Summe der "
-        f"Einzel-IMs, SPAN mit {p3['SPAN-current']:.2f} - allerdings ist der Proxy "
-        f"perfekt korreliert.",
-        f"Mit der beobachteten Korrelation von {c3['rho_real']:.2f} (21 REAL-Tage) wäre die "
-        f"parametrische IM von P3 {c3['im_ratio_real_vs_rho1']:.2f}x so hoch wie bei "
-        f"Korrelation 1; die Spread-Entlastung der FHS ist also überzeichnet.",
+        f"Heute (REAL-Preise) liegt die Marktrisiko-IM = max(FHS, SP) zwischen {f['lo']:+.0f} % "
+        f"und {f['hi']:+.0f} % gegenüber SPAN mit den echten ECC-Parametern; in {f['n_sp']} "
+        f"von 5 Portfolios bindet die Stressperioden-Komponente (SP).",
+        f"Die SP-Untergrenze ist absichtlich konservativ (Antiprozyklizität): sie tauscht "
+        f"Backtest-Genauigkeit gegen stabilere Margins. Auf der Proxy-Historie bindet sie an "
+        f"{100 * f['bind_lo']:.0f}-{100 * f['bind_hi']:.0f} % der Tage, erhöht die IM "
+        f"gegenüber reiner FHS im Mittel um {100 * f['up_lo']:.0f}-{100 * f['up_hi']:.0f} %, "
+        f"senkt die Überschreitungen von {_rng(f['fhs_b'])} auf {_rng(f['mrim_b'])} (erwartet "
+        f"{f['exp']:.1f}) und das Verhältnis Höchst- zu Tiefstwert für P5 von "
+        f"{p5['peak_to_trough_fhs']:.1f}x auf {p5['peak_to_trough_mrim']:.1f}x. Die stärksten "
+        f"5-Tages-Anstiege dämpft sie kaum ({100 * p5['max_5d_increase_fhs']:.0f} % vs. "
+        f"{100 * p5['max_5d_increase_mrim']:.0f} % für P5). Kupiec verwirft deshalb in "
+        f"{f['mrim_rej']} von 5 Portfolios wegen zu weniger Überschreitungen - das ist eine "
+        f"Folge des Designs, kein Modellfehler.",
+        f"Die SPAN-Formel von ECC, auf den Proxy angewendet, liefert für M1 im Mittel "
+        f"{m1['mean_error_pct']:+.0f} % gegenüber den echten Scanning Ranges. Hauptursache ist die "
+        f"Proxy-Konstruktion: das gleitende {f['win']}-Tage-Mittel glättet die Spot-Volatilität "
+        f"von {100 * f['spot_raw']:.0f} % auf {100 * f['spot_sm']:.1f} % täglich; das Niveau der "
+        f"Proxy-Volatilität ist also eine Folge der Glättung, keine Aussage über Spot vs. "
+        f"Futures. Mit realer Volatilität läge der implizite Risikomultiplikator für "
+        f"{f['n_in']} von 7 Tenoren in ECCs Band [2.66, 3.5].",
+        f"Die reale M1-Volatilität ({100 * vm1['estimate']:.2f} % täglich) beruht auf nur "
+        f"{int(vm1['n'])} Renditen (95 %-Intervall {100 * vm1['ci_low']:.2f}-"
+        f"{100 * vm1['ci_high']:.2f} %), ebenso die Korrelation Y1/Y2 von {rho['estimate']:.2f} "
+        f"({rho['ci_low']:.2f}-{rho['ci_high']:.2f}); beide sind unsichere Schätzungen.",
+        f"Beim Kalenderspread P3 rechnet FHS heute mit {f['p3']['FHS']:.2f} der Summe der "
+        f"Einzel-IMs, SPAN mit {f['p3']['SPAN-current']:.2f}. Der Proxy ist aber perfekt "
+        f"korreliert; mit der beobachteten Korrelation wäre die parametrische IM von P3 "
+        f"{f['c3']['im_ratio_real_vs_rho1']:.2f}x so hoch. Die Spread-Entlastung der FHS ist "
+        f"also überzeichnet.",
         "Belastbare Aussagen zur Historie erfordern echte EEX-Futures-Daten; bis dahin sind "
         "die Backtest-Ergebnisse eine Methodenprüfung, keine Modellvalidierung.",
     ]
     en = [
-        f"Today (REAL prices) market-risk IM = max(FHS, SP) is between {lo:+.0f} % and "
-        f"{hi:+.0f} % relative to SPAN with ECC's real parameters; the stress-period component "
-        f"binds for {n_sp} of 5 portfolios.",
-        f"ECC's SPAN formula applied to the SMARD proxy underestimates the real M1 scanning "
-        f"ranges by {abs(m1['mean_error_pct']):.0f} % on average. This is consistent with the "
-        f"proxy's lower volatility (M1 daily {100 * s_proxy:.2f} % vs. {100 * s_real:.2f} % "
-        f"real); with real volatility the implied risk multiplier lies in ECC's band "
-        f"[2.66, 3.5] for {n_in} of 7 tenors.",
-        f"In the backtest on proxy history, pure FHS has {_rng(fhs_b)} breaches against "
-        f"{exp:.1f} expected; max(FHS, SP) has {_rng(mrim_b)} and is conservative (Kupiec "
-        f"rejects because of too few breaches for {mrim_rej} of 5 portfolios).",
-        f"The SP floor dampens procyclicality: the peak-to-trough ratio for P5 falls from "
-        f"{pro[('FHS', 'P5')]:.1f}x (FHS) to {pro[('MRIM', 'P5')]:.1f}x.",
-        f"For the calendar spread P3, FHS today charges {p3['FHS']:.2f} of the sum of leg IMs, "
-        f"SPAN {p3['SPAN-current']:.2f} - but the proxy is perfectly correlated.",
-        f"With the observed correlation of {c3['rho_real']:.2f} (21 REAL days) the parametric "
-        f"IM of P3 would be {c3['im_ratio_real_vs_rho1']:.2f}x the correlation-1 value, so the "
-        f"FHS spread offset is overstated.",
+        f"Today (REAL prices) market-risk IM = max(FHS, SP) is between {f['lo']:+.0f} % and "
+        f"{f['hi']:+.0f} % relative to SPAN with ECC's real parameters; the stress-period (SP) "
+        f"component binds for {f['n_sp']} of 5 portfolios.",
+        f"The SP floor is conservative by design (anti-procyclicality): it trades backtest "
+        f"accuracy for margin stability. On the proxy history it binds on "
+        f"{100 * f['bind_lo']:.0f}-{100 * f['bind_hi']:.0f} % of days, raises IM over plain "
+        f"FHS by {100 * f['up_lo']:.0f}-{100 * f['up_hi']:.0f} % on average, reduces breaches "
+        f"from {_rng(f['fhs_b'])} to {_rng(f['mrim_b'])} ({f['exp']:.1f} expected) and the "
+        f"peak-to-trough ratio for P5 from {p5['peak_to_trough_fhs']:.1f}x to "
+        f"{p5['peak_to_trough_mrim']:.1f}x. It barely dampens the sharpest 5-day increases "
+        f"({100 * p5['max_5d_increase_fhs']:.0f} % vs. {100 * p5['max_5d_increase_mrim']:.0f} % "
+        f"for P5). Kupiec therefore rejects for too few breaches in {f['mrim_rej']} of 5 "
+        f"portfolios; this follows from the design and is not a model failure.",
+        f"ECC's SPAN formula applied to the proxy gives a mean error of "
+        f"{m1['mean_error_pct']:+.0f} % against the real M1 scanning ranges. The main cause is the "
+        f"proxy construction: the {f['win']}-day trailing mean smooths spot volatility from "
+        f"{100 * f['spot_raw']:.0f} % to {100 * f['spot_sm']:.1f} % per day, so the proxy's "
+        f"volatility level follows from the smoothing and says nothing about spot vs. "
+        f"futures. With real volatility the implied risk multiplier lies in ECC's band "
+        f"[2.66, 3.5] for {f['n_in']} of 7 tenors.",
+        f"The real M1 volatility ({100 * vm1['estimate']:.2f} % per day) rests on only "
+        f"{int(vm1['n'])} returns (95 % interval {100 * vm1['ci_low']:.2f}-"
+        f"{100 * vm1['ci_high']:.2f} %), and so does the Y1/Y2 correlation of "
+        f"{rho['estimate']:.2f} ({rho['ci_low']:.2f}-{rho['ci_high']:.2f}); both are noisy "
+        f"estimates.",
+        f"For the calendar spread P3, FHS today charges {f['p3']['FHS']:.2f} of the sum of "
+        f"leg IMs, SPAN {f['p3']['SPAN-current']:.2f}. But the proxy is perfectly correlated; "
+        f"with the observed correlation the parametric IM of P3 would be "
+        f"{f['c3']['im_ratio_real_vs_rho1']:.2f}x as high, so the FHS spread offset is "
+        f"overstated.",
         "Firm conclusions about history need real EEX futures data; until then the backtest "
         "is a check of the method, not a validation of the model.",
     ]
@@ -354,44 +394,92 @@ def interpretation(d: Data, today: pd.DataFrame) -> tuple[list[str], list[str]]:
 
 
 def readme_block(d: Data, today: pd.DataFrame, lang: str) -> str:
-    m1 = d.val.set_index("tenor").loc["M1"]
-    bt = d.bt[d.bt["portfolio_id"].isin(MAIN)].set_index(["model", "portfolio_id"])
-    c3 = d.corr.set_index("portfolio_id").loc["P3"]
+    f = _facts(d, today)
+    m1, rho = f["m1"], f["rho"]
     as_of = pd.Timestamp(d.meta["as_of_date"]).date()
-    start, end = _d(bt.loc["FHS"]["start"].iloc[0]), _d(bt.loc["FHS"]["end"].iloc[0])
+    link = "Details: [reports/margin_comparison.md](reports/margin_comparison.md)"
     if lang == "de":
         return "\n".join([
             f"*Automatisch erzeugt aus `reports/` (Stand {as_of}). Quelle je Zahl in Klammern.*",
             "",
-            f"- Heute: max(FHS, SP) vs. SPAN-current: {today['mrim_vs_span'].min():+.0f} % bis "
-            f"{today['mrim_vs_span'].max():+.0f} % je Portfolio; SP bindet in "
-            f"{int((today['binding'] == 'SP').sum())}/5 (REAL-Preise, PROXY-Szenarien).",
+            f"- Heute: max(FHS, SP) vs. SPAN-current: {f['lo']:+.0f} % bis {f['hi']:+.0f} % je "
+            f"Portfolio; die Stressperioden-Komponente bindet in {f['n_sp']}/5 (REAL-Preise, "
+            f"PROXY-Szenarien).",
+            f"- Backtest {f['start']} bis {f['end']}: reine FHS {_rng(f['fhs_b'])}, "
+            f"max(FHS, SP) {_rng(f['mrim_b'])} Überschreitungen bei {f['exp']:.1f} erwarteten. "
+            f"Die SP-Untergrenze ist gewollt konservativ: IM im Mittel "
+            f"+{100 * f['up_lo']:.0f} bis +{100 * f['up_hi']:.0f} % über FHS, dafür geringere "
+            f"Schwankung (PROXY).",
             f"- SPAN-hist vs. echte ECC-Scanning-Ranges (M1, {int(m1['n'])} Tage): mittlerer "
-            f"Fehler {m1['mean_error_pct']:+.1f} %, max. {m1['max_abs_error_pct']:.1f} % "
+            f"Fehler {m1['mean_error_pct']:+.1f} %; Ursache ist die Glättung im Proxy "
             f"(PROXY vs. REAL).",
-            f"- Backtest {start} bis {end}: "
-            f"FHS {_rng(bt.loc['FHS']['breaches'])}, "
-            f"max(FHS, SP) {_rng(bt.loc['MRIM']['breaches'])}"
-            f" Überschreitungen bei {bt.loc['FHS']['expected'].iloc[0]:.1f} erwarteten (PROXY).",
-            f"- Korrelation Y1/Y2 real {c3['rho_real']:.2f} statt 1 im Proxy: mit realer "
-            f"Korrelation wäre die IM des Kalenderspreads {c3['im_ratio_real_vs_rho1']:.2f}x so "
-            f"hoch (parametrisch, REAL).",
-            "", "Details: [reports/margin_comparison.md](reports/margin_comparison.md)"])
+            f"- Korrelation Y1/Y2 real {rho['estimate']:.2f} (95 %: {rho['ci_low']:.2f}-"
+            f"{rho['ci_high']:.2f}) statt 1 im Proxy: mit realer Korrelation wäre die IM des "
+            f"Kalenderspreads {f['c3']['im_ratio_real_vs_rho1']:.2f}x so hoch (parametrisch, "
+            f"REAL).", "", link])
     return "\n".join([
         f"*Generated from `reports/` (as of {as_of}). Source of each number in brackets.*", "",
-        f"- Today: max(FHS, SP) vs. SPAN-current: {today['mrim_vs_span'].min():+.0f} % to "
-        f"{today['mrim_vs_span'].max():+.0f} % per portfolio; SP binds in "
-        f"{int((today['binding'] == 'SP').sum())}/5 (REAL prices, PROXY scenarios).",
+        f"- Today: max(FHS, SP) vs. SPAN-current: {f['lo']:+.0f} % to {f['hi']:+.0f} % per "
+        f"portfolio; the stress-period component binds in {f['n_sp']}/5 (REAL prices, PROXY "
+        f"scenarios).",
+        f"- Backtest {f['start']} to {f['end']}: plain FHS {_rng(f['fhs_b'])}, max(FHS, SP) "
+        f"{_rng(f['mrim_b'])} breaches vs. {f['exp']:.1f} expected. The SP floor is "
+        f"conservative by design: IM on average +{100 * f['up_lo']:.0f} to "
+        f"+{100 * f['up_hi']:.0f} % above FHS, in exchange for less variation (PROXY).",
         f"- SPAN-hist vs. real ECC scanning ranges (M1, {int(m1['n'])} days): mean error "
-        f"{m1['mean_error_pct']:+.1f} %, max {m1['max_abs_error_pct']:.1f} % (PROXY vs. REAL).",
-        f"- Backtest {start} to {end}: FHS "
-        f"{_rng(bt.loc['FHS']['breaches'])}, max(FHS, SP) "
-        f"{_rng(bt.loc['MRIM']['breaches'])} breaches vs. "
-        f"{bt.loc['FHS']['expected'].iloc[0]:.1f} expected (PROXY).",
-        f"- Y1/Y2 correlation is {c3['rho_real']:.2f} in REAL data vs. 1 in the proxy: with the "
-        f"real correlation the calendar-spread IM would be {c3['im_ratio_real_vs_rho1']:.2f}x "
-        f"as high (parametric, REAL).",
-        "", "Details: [reports/margin_comparison.md](reports/margin_comparison.md)"])
+        f"{m1['mean_error_pct']:+.1f} %, caused by the smoothing in the proxy (PROXY vs. REAL).",
+        f"- Y1/Y2 correlation is {rho['estimate']:.2f} in REAL data (95 %: {rho['ci_low']:.2f}-"
+        f"{rho['ci_high']:.2f}) vs. 1 in the proxy: with the real correlation the "
+        f"calendar-spread IM would be {f['c3']['im_ratio_real_vs_rho1']:.2f}x as high "
+        f"(parametric, REAL).", "", link])
+
+
+def smoothing_table(d: Data) -> str:
+    s = d.smooth
+    t = pd.DataFrame({
+        "averaging window": s["window_days"].map(
+            lambda w: "none (daily baseload)" if w == 1 else f"{w}-day trailing mean"),
+        "daily vol, full history": s["daily_vol_full"].map(lambda x: f"{100 * x:.1f} %"),
+        "daily vol, last 21 days": s["daily_vol_last21"].map(lambda x: f"{100 * x:.1f} %"),
+        "lag-1 autocorrelation": s["lag1_autocorr"].map(lambda x: f"{x:.2f}"),
+        "source": "PROXY (SMARD spot)"})
+    return md_table(t)
+
+
+def uncertainty_table(d: Data) -> str:
+    u = d.unc
+    pct = u["quantity"].str.startswith("daily vol")
+
+    def fmt(x, is_pct):
+        return f"{100 * x:.2f} %" if is_pct else f"{x:.3f}"
+
+    t = pd.DataFrame({
+        "quantity": u["quantity"], "n": u["n"],
+        "estimate": [fmt(x, p) for x, p in zip(u["estimate"], pct, strict=True)],
+        "95 % interval (analytic)": [f"{fmt(a, p)} - {fmt(b, p)}" for a, b, p in
+                                     zip(u["ci_low"], u["ci_high"], pct, strict=True)],
+        "95 % bootstrap range": [f"{fmt(a, p)} - {fmt(b, p)}" for a, b, p in
+                                 zip(u["boot_low"], u["boot_high"], pct, strict=True)],
+        "source": u["price_source"]})
+    return md_table(t)
+
+
+def tradeoff_table(d: Data) -> str:
+    t = d.trade
+    out = pd.DataFrame({
+        "Portfolio": t["portfolio_id"], "days": t["n"],
+        "breaches FHS / max(FHS, SP)": t["breaches_fhs"].astype(str) + " / "
+        + t["breaches_mrim"].astype(str),
+        "expected": t["expected"].round(1),
+        "SP binding": t["sp_binding_share"].map(lambda x: f"{100 * x:.0f} % of days"),
+        "mean IM uplift vs. FHS": t["mean_uplift"].map(lambda x: _pct(100 * x, 0)),
+        "peak/trough FHS / max": t["peak_to_trough_fhs"].map(lambda x: f"{x:.1f}x") + " / "
+        + t["peak_to_trough_mrim"].map(lambda x: f"{x:.1f}x"),
+        "max 5-day increase FHS / max": t["max_5d_increase_fhs"].map(
+            lambda x: _pct(100 * x, 0)) + " / " + t["max_5d_increase_mrim"].map(
+            lambda x: _pct(100 * x, 0)),
+        "source": t["price_source"]})
+    return md_table(out)
 
 
 def update_readme(path: Path, block: str) -> None:
@@ -461,6 +549,18 @@ def build(con, reports: Path, cfg: dict, readme_dir: Path | None) -> dict:
         "share M1's relative error up to the day-to-day change of ECC's ratios: **only the M1 "
         "row is an independent check**.",
         "", "![SPAN validation](figures/span_validation.png)", "",
+        "**Why is the proxy less volatile than futures, although spot is normally more "
+        "volatile?** Because of how the proxy is built. Its base factor is a trailing "
+        f"{int(d.smooth['window_days'].iloc[-1])}-day *mean* of daily baseload spot prices "
+        "(D-011). Averaging over a window removes most day-to-day spot variation, so the "
+        "proxy's volatility level is set by the averaging window and is not a measurement of "
+        "spot or futures volatility. The table shows the effect of the window on the same "
+        "SMARD data:",
+        "", smoothing_table(d), "",
+        "The underestimate of SPAN-hist in the table above is therefore mainly a consequence "
+        "of the smoothing choice. The REAL volatility it is compared with is itself a noisy "
+        "short-sample estimate (section 7).",
+        "",
         "Formula check on the as-of date: volatility from the REAL returns collected so far "
         "(too few for ECC's 255-return window and for R, so R is backed out instead).",
         "", v2, "",
@@ -475,12 +575,24 @@ def build(con, reports: Path, cfg: dict, readme_dir: Path | None) -> dict:
         "subsample (every second day). Single-factor proxy: books with the same sign of net "
         "factor exposure breach on the same days.",
         "", backtest_table(d), "",
+        "### Anti-procyclicality trade-off: max(FHS, SP) vs. plain FHS (PROXY)",
+        "",
+        "The stress-period floor is conservative by design. It keeps margin closer to "
+        "stressed levels in calm periods, so that margins rise less in a crisis "
+        "(anti-procyclicality). Fewer breaches than the 99 % target are the intended result, "
+        "not a model failure. The price is higher average margin.",
+        "", tradeoff_table(d), "",
         "## 5. Procyclicality (PROXY)",
         "", procyclicality_table(d), "",
         "![IM around August 2022](figures/im_2022.png)", "",
         "## 6. Diversification",
         "", diversification_table(d), "",
         "## 7. How much does the single-factor proxy overstate offsets?",
+        "",
+        "All REAL statistics rest on the few REAL days collected so far and are noisy. "
+        "Intervals: chi-square (volatility) and Fisher-z (correlation); bootstrap with "
+        "replacement over days, 5,000 draws:",
+        "", uncertainty_table(d),
         "",
         "The proxy has correlation 1 between tenors. Correlations from the REAL returns "
         "collected so far, and the effect on a parametric (variance-covariance) IM of the "

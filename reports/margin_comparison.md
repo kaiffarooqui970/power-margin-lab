@@ -42,6 +42,16 @@ Because the proxy is one factor scaled by s_k (taken from ECC's ranges), all ten
 
 ![SPAN validation](figures/span_validation.png)
 
+**Why is the proxy less volatile than futures, although spot is normally more volatile?** Because of how the proxy is built. Its base factor is a trailing 30-day *mean* of daily baseload spot prices (D-011). Averaging over a window removes most day-to-day spot variation, so the proxy's volatility level is set by the averaging window and is not a measurement of spot or futures volatility. The table shows the effect of the window on the same SMARD data:
+
+| averaging window | daily vol, full history | daily vol, last 21 days | lag-1 autocorrelation | source |
+|---|---|---|---|---|
+| none (daily baseload) | 49.0 % | 49.0 % | -0.07 | PROXY (SMARD spot) |
+| 7-day trailing mean | 9.6 % | 12.1 % | 0.34 | PROXY (SMARD spot) |
+| 30-day trailing mean | 2.7 % | 2.4 % | 0.38 | PROXY (SMARD spot) |
+
+The underestimate of SPAN-hist in the table above is therefore mainly a consequence of the smoothing choice. The REAL volatility it is compared with is itself a noisy short-sample estimate (section 7).
+
 Formula check on the as-of date: volatility from the REAL returns collected so far (too few for ECC's 255-return window and for R, so R is backed out instead).
 
 | Tenor | REAL returns | sigma REAL (daily) | sigma PROXY (daily) | ECC buffer | SPAN-hist buffer | SPAN-hist R | implied R (REAL sigma, ECC buffer) | inside [R_min, R_max] |
@@ -87,6 +97,18 @@ Breach: realised 2-day loss > IM. Overlapping 2-day windows make breaches depend
 | MRIM | P4 | 1266 | 3 | 12.7 | 0.001 | 0.003 | 0.008 | 0.955 | 1 / green | 2 / green | PROXY |
 | MRIM | P5 | 1266 | 4 | 12.7 | 0.004 | 0.007 | 0.043 | 0.910 | 0 / green | 3 / green | PROXY |
 
+### Anti-procyclicality trade-off: max(FHS, SP) vs. plain FHS (PROXY)
+
+The stress-period floor is conservative by design. It keeps margin closer to stressed levels in calm periods, so that margins rise less in a crisis (anti-procyclicality). Fewer breaches than the 99 % target are the intended result, not a model failure. The price is higher average margin.
+
+| Portfolio | days | breaches FHS / max(FHS, SP) | expected | SP binding | mean IM uplift vs. FHS | peak/trough FHS / max | max 5-day increase FHS / max | source |
+|---|---|---|---|---|---|---|---|---|
+| P1 | 1266 | 12 / 4 | 12.7 | 71 % of days | +39 % | 7.6x / 4.2x | +111 % / +107 % | PROXY |
+| P2 | 1266 | 12 / 3 | 12.7 | 75 % of days | +37 % | 7.6x / 4.5x | +114 % / +114 % | PROXY |
+| P3 | 1266 | 12 / 4 | 12.7 | 71 % of days | +38 % | 10.3x / 5.9x | +120 % / +120 % | PROXY |
+| P4 | 1266 | 12 / 3 | 12.7 | 75 % of days | +37 % | 7.4x / 4.5x | +116 % / +116 % | PROXY |
+| P5 | 1266 | 12 / 4 | 12.7 | 71 % of days | +38 % | 13.3x / 7.4x | +131 % / +131 % | PROXY |
+
 ## 5. Procyclicality (PROXY)
 
 | Model | Portfolio | peak / trough | max 5-day increase | max 30-day increase | IM 1 Jul 2022 [EUR m] | peak Jul-Sep 2022 [EUR m] | peak date | peak / 1 Jul | source |
@@ -130,6 +152,19 @@ Breach: realised 2-day loss > IM. Overlapping 2-day windows make breaches depend
 
 ## 7. How much does the single-factor proxy overstate offsets?
 
+All REAL statistics rest on the few REAL days collected so far and are noisy. Intervals: chi-square (volatility) and Fisher-z (correlation); bootstrap with replacement over days, 5,000 draws:
+
+| quantity | n | estimate | 95 % interval (analytic) | 95 % bootstrap range | source |
+|---|---|---|---|---|---|
+| daily vol M1 | 21 | 3.14 % | 2.40 % - 4.53 % | 2.11 % - 3.92 % | REAL |
+| daily vol M2 | 21 | 2.77 % | 2.12 % - 4.00 % | 1.81 % - 3.47 % | REAL |
+| daily vol M3 | 21 | 2.61 % | 2.00 % - 3.77 % | 1.67 % - 3.34 % | REAL |
+| daily vol Q1 | 21 | 2.72 % | 2.08 % - 3.92 % | 1.74 % - 3.48 % | REAL |
+| daily vol Q2 | 21 | 2.15 % | 1.64 % - 3.10 % | 1.16 % - 3.02 % | REAL |
+| daily vol Y1 | 21 | 1.68 % | 1.28 % - 2.42 % | 1.10 % - 2.12 % | REAL |
+| daily vol Y2 | 21 | 0.96 % | 0.73 % - 1.38 % | 0.63 % - 1.21 % | REAL |
+| corr Y1/Y2 | 21 | 0.925 | 0.820 - 0.969 | 0.827 - 0.968 | REAL |
+
 The proxy has correlation 1 between tenors. Correlations from the REAL returns collected so far, and the effect on a parametric (variance-covariance) IM of the spread portfolio with REAL volatilities:
 
 | Portfolio | pair | n (REAL days) | rho REAL | 95 % CI | rho PROXY | parametric IM: REAL rho / rho=1 | same, at lower CI bound |
@@ -143,20 +178,18 @@ Proxy diagnostics: lag-1 autocorrelation of daily proxy returns 0.38 (trailing-m
 
 **Deutsch**
 
-- Heute (REAL-Preise) liegt die marktrisikobasierte IM = max(FHS, SP) zwischen -28 % und +12 % gegenüber SPAN mit den echten ECC-Parametern; in 5 von 5 Portfolios bindet die Stressperioden-Komponente.
-- Die SPAN-Formel von ECC, auf den SMARD-Proxy angewendet, unterschätzt die echten Scanning Ranges für M1 im Mittel um 25 %. Das passt zur niedrigeren Proxy-Volatilität (M1 täglich 2.17 % statt 3.06 % real); mit realer Volatilität läge der implizite Risikomultiplikator für 5 von 7 Tenoren in ECCs Band [2,66; 3,5].
-- Im Rückvergleich auf Proxy-Historie hat die reine FHS 12 Überschreitungen bei 12.7 erwarteten; max(FHS, SP) hat 3-4 und ist damit konservativ (Kupiec verwirft in 5 von 5 Portfolios wegen zu weniger Überschreitungen).
-- Die SP-Untergrenze dämpft die Prozyklizität: das Verhältnis Höchst- zu Tiefstwert sinkt für P5 von 13.3x (FHS) auf 7.4x.
-- Beim Kalenderspread P3 rechnet FHS heute mit 0.47 der Summe der Einzel-IMs, SPAN mit 0.60 - allerdings ist der Proxy perfekt korreliert.
-- Mit der beobachteten Korrelation von 0.92 (21 REAL-Tage) wäre die parametrische IM von P3 1.09x so hoch wie bei Korrelation 1; die Spread-Entlastung der FHS ist also überzeichnet.
+- Heute (REAL-Preise) liegt die Marktrisiko-IM = max(FHS, SP) zwischen -28 % und +12 % gegenüber SPAN mit den echten ECC-Parametern; in 5 von 5 Portfolios bindet die Stressperioden-Komponente (SP).
+- Die SP-Untergrenze ist absichtlich konservativ (Antiprozyklizität): sie tauscht Backtest-Genauigkeit gegen stabilere Margins. Auf der Proxy-Historie bindet sie an 71-75 % der Tage, erhöht die IM gegenüber reiner FHS im Mittel um 37-39 %, senkt die Überschreitungen von 12 auf 3-4 (erwartet 12.7) und das Verhältnis Höchst- zu Tiefstwert für P5 von 13.3x auf 7.4x. Die stärksten 5-Tages-Anstiege dämpft sie kaum (131 % vs. 131 % für P5). Kupiec verwirft deshalb in 5 von 5 Portfolios wegen zu weniger Überschreitungen - das ist eine Folge des Designs, kein Modellfehler.
+- Die SPAN-Formel von ECC, auf den Proxy angewendet, liefert für M1 im Mittel -25 % gegenüber den echten Scanning Ranges. Hauptursache ist die Proxy-Konstruktion: das gleitende 30-Tage-Mittel glättet die Spot-Volatilität von 49 % auf 2.7 % täglich; das Niveau der Proxy-Volatilität ist also eine Folge der Glättung, keine Aussage über Spot vs. Futures. Mit realer Volatilität läge der implizite Risikomultiplikator für 5 von 7 Tenoren in ECCs Band [2.66, 3.5].
+- Die reale M1-Volatilität (3.14 % täglich) beruht auf nur 21 Renditen (95 %-Intervall 2.40-4.53 %), ebenso die Korrelation Y1/Y2 von 0.92 (0.82-0.97); beide sind unsichere Schätzungen.
+- Beim Kalenderspread P3 rechnet FHS heute mit 0.47 der Summe der Einzel-IMs, SPAN mit 0.60. Der Proxy ist aber perfekt korreliert; mit der beobachteten Korrelation wäre die parametrische IM von P3 1.09x so hoch. Die Spread-Entlastung der FHS ist also überzeichnet.
 - Belastbare Aussagen zur Historie erfordern echte EEX-Futures-Daten; bis dahin sind die Backtest-Ergebnisse eine Methodenprüfung, keine Modellvalidierung.
 
 **English**
 
-- Today (REAL prices) market-risk IM = max(FHS, SP) is between -28 % and +12 % relative to SPAN with ECC's real parameters; the stress-period component binds for 5 of 5 portfolios.
-- ECC's SPAN formula applied to the SMARD proxy underestimates the real M1 scanning ranges by 25 % on average. This is consistent with the proxy's lower volatility (M1 daily 2.17 % vs. 3.06 % real); with real volatility the implied risk multiplier lies in ECC's band [2.66, 3.5] for 5 of 7 tenors.
-- In the backtest on proxy history, pure FHS has 12 breaches against 12.7 expected; max(FHS, SP) has 3-4 and is conservative (Kupiec rejects because of too few breaches for 5 of 5 portfolios).
-- The SP floor dampens procyclicality: the peak-to-trough ratio for P5 falls from 13.3x (FHS) to 7.4x.
-- For the calendar spread P3, FHS today charges 0.47 of the sum of leg IMs, SPAN 0.60 - but the proxy is perfectly correlated.
-- With the observed correlation of 0.92 (21 REAL days) the parametric IM of P3 would be 1.09x the correlation-1 value, so the FHS spread offset is overstated.
+- Today (REAL prices) market-risk IM = max(FHS, SP) is between -28 % and +12 % relative to SPAN with ECC's real parameters; the stress-period (SP) component binds for 5 of 5 portfolios.
+- The SP floor is conservative by design (anti-procyclicality): it trades backtest accuracy for margin stability. On the proxy history it binds on 71-75 % of days, raises IM over plain FHS by 37-39 % on average, reduces breaches from 12 to 3-4 (12.7 expected) and the peak-to-trough ratio for P5 from 13.3x to 7.4x. It barely dampens the sharpest 5-day increases (131 % vs. 131 % for P5). Kupiec therefore rejects for too few breaches in 5 of 5 portfolios; this follows from the design and is not a model failure.
+- ECC's SPAN formula applied to the proxy gives a mean error of -25 % against the real M1 scanning ranges. The main cause is the proxy construction: the 30-day trailing mean smooths spot volatility from 49 % to 2.7 % per day, so the proxy's volatility level follows from the smoothing and says nothing about spot vs. futures. With real volatility the implied risk multiplier lies in ECC's band [2.66, 3.5] for 5 of 7 tenors.
+- The real M1 volatility (3.14 % per day) rests on only 21 returns (95 % interval 2.40-4.53 %), and so does the Y1/Y2 correlation of 0.92 (0.82-0.97); both are noisy estimates.
+- For the calendar spread P3, FHS today charges 0.47 of the sum of leg IMs, SPAN 0.60. But the proxy is perfectly correlated; with the observed correlation the parametric IM of P3 would be 1.09x as high, so the FHS spread offset is overstated.
 - Firm conclusions about history need real EEX futures data; until then the backtest is a check of the method, not a validation of the model.

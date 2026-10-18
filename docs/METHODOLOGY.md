@@ -31,6 +31,16 @@ same interface (`sources/eex.py`). Every model then runs on REAL history unchang
 4. Tenor k return = s_k · r, where s_k is tenor k's relative scanning range (range/price) divided by M1's, from ECC's file on the as-of date.
 5. Levels are anchored to the REAL price on the as-of date.
 
+**The proxy smooths volatility on purpose and heavily.** Its base factor is a 30-day *average*
+of spot prices. Averaging removes most of the day-to-day variation of spot prices, which on their
+own are far more volatile than futures. The proxy's volatility level is therefore set by the
+averaging window. It is not a measurement of spot or futures volatility, and it is not
+calibrated to futures. Report §2 shows daily volatility for no averaging, a 7-day and a 30-day
+mean on the same SMARD data. That the 30-day proxy ends up somewhat *below* real futures
+volatility today is a by-product of this choice: a shorter window would give a higher level.
+Everything that scales with volatility inherits this: SPAN-hist levels, FHS σ_T and the
+backtest.
+
 This is the simplest defensible proxy, and it is **one factor**. Correlation between tenors is
 1 by construction, so spread offsets are overstated (quantified in report §7). Spot-derived
 volatility is not futures volatility (report §2), and the trailing mean makes returns
