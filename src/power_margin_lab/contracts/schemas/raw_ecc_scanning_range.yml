@@ -1,0 +1,10 @@
+name: raw_ecc_scanning_range
+description: ECC daily SPAN price scanning ranges (all products). EUR per lot (contract).
+source_columns: [Product_ID, Expiry_Year, Expiry_Month, ClearingCurrency, PriceScanRange, Volscanrange]
+columns:
+  product_code: {source: Product_ID, type: str, regex: '^[A-Z0-9]{4}$'}
+  expiry_year: {source: Expiry_Year, type: int, min: 2000, max: 2100}
+  expiry_month: {source: Expiry_Month, type: int, min: 1, max: 12}
+  currency: {source: ClearingCurrency, type: str, regex: '^[A-Z]{3}$'}
+  price_scan_range: {source: PriceScanRange, type: float_de, min: 0, max: 1000000000}
+  vol_scan_range: {source: Volscanrange, type: float_de, min: 0, max: 10, nullable: true}

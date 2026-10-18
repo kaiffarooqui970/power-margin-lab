@@ -91,8 +91,10 @@ def main(argv: list[str] | None = None) -> int:
         default="latest",
         help="'latest' (default), 'all' (whole published window) or a calc date YYYYMMDD",
     )
-    p.add_argument("--with-spreads", action="store_true", help="also fetch intercommodityspreads (~55 MB/day)")
-    p.add_argument("--with-spanfile", action="store_true", help="also fetch ECC_SPANFILE xml.zip (~20 MB/day)")
+    p.add_argument("--with-spreads", action="store_true",
+                   help="also fetch intercommodityspreads (~55 MB/day)")
+    p.add_argument("--with-spanfile", action="store_true",
+                   help="also fetch ECC_SPANFILE xml.zip (~20 MB/day)")
     args = p.parse_args(argv)
 
     kinds = set(DEFAULT_KINDS)

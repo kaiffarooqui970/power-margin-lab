@@ -1,0 +1,14 @@
+name: raw_ecc_spread_credit
+description: ECC inter-commodity spread credits (tier pairs). Applied to the German-base subset.
+source_columns: [SpreadID, CombinedCommodityA, ExpiryYearA, ExpiryMonthA, CombinedCommodityB, ExpiryYearB, ExpiryMonthB, TierNumberA, TierNumberB, RatioA, RatioB, Credit]
+columns:
+  spread_id: {source: SpreadID, type: int, min: 0}
+  cc_a: {source: CombinedCommodityA, type: str, regex: '^[A-Z0-9]{4}$'}
+  expiry_year_a: {source: ExpiryYearA, type: int, min: 2000, max: 2100}
+  expiry_month_a: {source: ExpiryMonthA, type: int, min: 1, max: 12}
+  cc_b: {source: CombinedCommodityB, type: str, regex: '^[A-Z0-9]{4}$'}
+  expiry_year_b: {source: ExpiryYearB, type: int, min: 2000, max: 2100}
+  expiry_month_b: {source: ExpiryMonthB, type: int, min: 1, max: 12}
+  ratio_a: {source: RatioA, type: float_dot, exclusive_min: 0}
+  ratio_b: {source: RatioB, type: float_dot, exclusive_min: 0}
+  credit: {source: Credit, type: float_dot, min: 0, max: 1}

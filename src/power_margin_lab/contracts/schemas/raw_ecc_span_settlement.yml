@@ -1,0 +1,15 @@
+name: raw_ecc_span_settlement
+description: German baseload futures extracted from ECC_SPANFILE XML (futPf/fut). Price EUR/MWh.
+source_columns: [calc_date, pf_code, pe, p, cvf, fDeliv, lDeliv, setlDate, priceScan]
+columns:
+  calc_date: {source: calc_date, type: date_ymd}
+  pf_code: {source: pf_code, type: str, allowed: [DEBM, DEBQ, DEBY]}
+  period: {source: pe, type: str, regex: '^\d{6}$'}
+  # 0.01 = ECC 'Minimum Settlement Price' placeholder: newly listed contracts before their first
+  # settlement and cascaded contracts after expiry carry it (observed Sep-Oct 2026).
+  price: {source: p, type: float, exclusive_min: 0.01, max: 5000}
+  contract_hours: {source: cvf, type: float, min: 1, max: 8784}
+  delivery_first: {source: fDeliv, type: date_ymd}
+  delivery_last: {source: lDeliv, type: date_ymd}
+  settlement_date: {source: setlDate, type: date_ymd}
+  price_scan_eur_per_lot: {source: priceScan, type: float, min: 0}

@@ -1,0 +1,6 @@
+name: raw_smard_hourly
+description: SMARD day-ahead price DE-LU (filter 4169), hourly, EUR/MWh. Source Bundesnetzagentur | SMARD.de (CC BY 4.0).
+source_columns: [ts_ms, price]
+columns:
+  ts_ms: {source: ts_ms, type: int, min: 1500000000000, max: 2500000000000}
+  price: {source: price, type: float, min: -500, max: 5000}

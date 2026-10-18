@@ -1,0 +1,7 @@
+name: raw_ecc_margin_buffer
+description: ECC anti-procyclicality margin buffer per product and relative (constant) maturity.
+source_columns: [ReportDate, ProductID_RelativeMaturity, MarginBuffer]
+columns:
+  report_date: {source: ReportDate, type: date_dmy}
+  product_maturity: {source: ProductID_RelativeMaturity, type: str, regex: '^[A-Z0-9]{4}_\d{2}$'}
+  margin_buffer: {source: MarginBuffer, type: percent, min: 0, max: 10}

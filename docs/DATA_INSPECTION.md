@@ -40,9 +40,30 @@ Describes file *formats* only; no values from licensed sources are reproduced he
 
 **Risk parameter file.** The *Model Parametrisation* sheet gives the SMP calibration: λ, look-back, R_min, R_max, α_R, w, a, MCAP. The *Cross Margining* sheet maps DE power to liquidation group `COREN`, cross-margining group `ENERGY`.
 
+**Placeholder price 0.01 (found in Phase 1).** In the SPAN XML, contracts carry p = 0.01 (ECC's
+"Minimum Settlement Price" in the risk parameter file) in two cases:
+- newly listed far contracts before their first settlement (DEBM 2028-10, DEBQ 2029-Q3);
+- cascaded contracts after their last trading day (DEBQ 2026-Q4, DEBM 2026-09).
+
+Left in, these rows would produce a −99.99 % return. They are quarantined by the contract
+(`exclusive_min: 0.01`); rows after `setlDate` are also dropped in `build`.
+
+**The ~212 % margin buffer.** It is `G5BQ_06`, the 6th relative maturity of
+**EEX PEG Natural Gas Quarter Future** (name confirmed in the SPAN XML), on 2026-10-16. Values of 202 % (17.09) and 205 %
+(01.10) show it is persistent. The stressed-volatility component
+`b0 = (5/255)(σ_max/σ − 1)` gives 211.82 % for σ_max/σ ≈ 109, i.e. current volatility at about
+1 % of its historical maximum (a thinly traded back quarter). No German power entry exceeds 25 %.
+
 ## Energy-Charts exports
 
-Not yet provided. They are expected in `data/raw/energy_charts/` (Month, Quarter, Year).
+Not used: the export is not licensed for this use (user decision, 2026-10-18).
+
+## SMARD day-ahead (inspected 2026-10-18)
+
+- API: `https://www.smard.de/app/chart_data/4169/DE-LU/index_hour.json` returns weekly timestamps; each weekly file holds `{"meta_data": {...}, "series": [[ts_ms_utc, price|null], ...]}`. Hourly resolution remains available after the 2025 switch to 15-minute day-ahead products; a `quarterhour` series also exists.
+- Coverage: 2018-09-30 22:00 UTC (= 2018-10-01 local) to the latest auction. Future hours are `null`.
+- Quality: no duplicate hours; hourly min −500, max ≈ 936 EUR/MWh; every Berlin delivery day is complete (23/24/25 hours).
+- Licence: CC BY 4.0, attribution "Bundesnetzagentur | SMARD.de" (https://www.smard.de/home/datennutzung).
 
 ## Pitfall reproduced during inspection
 
