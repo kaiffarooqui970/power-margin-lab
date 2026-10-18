@@ -1,0 +1,17 @@
+# Test portfolios. Positions reference relative tenors; MW > 0 long, < 0 short.
+portfolios:
+  P1:
+    name: Stadtwerk-Absicherung (municipal utility hedge)
+    positions: {Y1: 50, Q1: 20}
+  P2:
+    name: Erzeuger (generator)
+    positions: {Y1: -100}
+  P3:
+    name: Kalenderspread (calendar spread)
+    positions: {Y1: 50, Y2: -50}
+  P4:
+    name: Monat/Quartal-Spread (month/quarter spread)
+    positions: {M1: 30, Q1: -30}
+  P5:
+    name: Direktional (directional)
+    positions: {M1: 20}
