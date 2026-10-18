@@ -1,0 +1,28 @@
+[project]
+name = "power-margin-lab"
+version = "0.1.0"
+description = "Simplified SPAN vs. Prisma-inspired FHS initial margin for German baseload power futures, with backtesting."
+authors = [{ name = "Kaif Farooqui" }]
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "duckdb>=1.1",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["uv_build>=0.11.13,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]

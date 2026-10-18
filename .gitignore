@@ -1,0 +1,19 @@
+# Raw and processed market data must never be committed (licence: Energy-Charts personal use,
+# EEX/ECC files require permission for systematic republication). See README, "Data notice".
+data/
+*.duckdb
+*.duckdb.wal
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
