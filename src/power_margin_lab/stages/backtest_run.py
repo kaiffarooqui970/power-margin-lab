@@ -232,7 +232,8 @@ def run(paths: Paths, cfg: dict) -> dict:
                     "boot_high": float(np.quantile(boot, 0.975)), "price_source": "REAL"})
     j = piv[["Y1", "Y2"]].dropna().to_numpy()
     idx = rng.integers(0, len(j), (n_boot, len(j)))
-    bc = np.array([np.corrcoef(j[i, 0], j[i, 1])[0, 1] for i in idx])
+    with np.errstate(invalid="ignore", divide="ignore"):  # constant resamples -> NaN, dropped
+        bc = np.array([np.corrcoef(j[i, 0], j[i, 1])[0, 1] for i in idx])
     rho = float(np.corrcoef(j[:, 0], j[:, 1])[0, 1])
     flo, fhi = fisher_ci(rho, len(j))
     unc.append({"quantity": "corr Y1/Y2", "n": len(j), "estimate": rho, "ci_low": flo,
