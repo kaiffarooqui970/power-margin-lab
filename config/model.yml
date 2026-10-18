@@ -1,0 +1,58 @@
+# Model parameters. Every value that is not taken from an ECC public document is an
+# assumption of this project; see docs/DECISIONS.md for the reasoning behind each one.
+
+tenors: [M1, M2, M3, Q1, Q2, Y1, Y2]
+
+history:
+  source: smard_proxy        # smard_proxy | eex (stub, see README)
+  start: 2018-10-01          # first day of the DE-LU bidding zone on SMARD
+
+proxy:
+  smoothing_days: 30         # trailing calendar-day mean of daily baseload spot = base risk factor
+  # Per-tenor return scaling s_k = (scan/price)_k / (scan/price)_M1 from the ECC scanning-range
+  # file of the latest REAL date (D-012).
+
+fhs:                         # Prisma-inspired FHS; ECC's Prisma calibration is member-only (D-020)
+  confidence: 0.99           # ECC webinar Jun 2026, p. 7
+  es_confidence: 0.975
+  mpor_days: 2               # ECC webinar Jun 2026, p. 7
+  lookback_years: 3          # ECC webinar Jun 2026, p. 7
+  min_window_obs: 250        # below 3 years of history: computed on a shorter window and flagged
+  ewma_lambda: 0.94          # assumption (D-021)
+  ewma_lambda_sensitivity: 0.97
+  ewma_seed_obs: 20
+  vol_floor_quantile: 0.05   # floor on EWMA vol: 5% quantile of the vol series in the window (D-023)
+
+stress:
+  start: 2021-09-01          # energy-crisis window (assumption, D-025)
+  end: 2023-03-31
+  confidence: 0.99
+  min_obs: 20
+
+liquidity_addon:             # simplification, off by default (D-027)
+  enabled: false
+  rate_of_gross_notional: 0.0
+
+span:                        # ECC Derivative Market Margining V1.19 + ECC Risk Parameters (Sep 2026)
+  liquidation_days: 2
+  ewma_lambda: 0.99
+  lookback_returns: 255      # 256 prices -> 255 returns
+  r_min: 2.66
+  r_max: 3.5
+  alpha_r: 0.99
+  min_obs_for_r: 100
+  stress_weight_w: 5
+  buffer_a: 0.2
+  buffer_max: 0.25
+  mcap_cross_commodity: 0.8
+  max_credit: 0.99
+  round_eur_per_mwh: 2       # observed: ECC ranges are 2-decimal EUR/MWh x hours
+
+backtest:
+  traffic_light_window: 250
+  confidence: 0.99
+
+procyclicality:              # "IM behaviour around August 2022"
+  base: 2022-07-01
+  start: 2022-07-01
+  end: 2022-09-30
